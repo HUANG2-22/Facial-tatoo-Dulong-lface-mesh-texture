@@ -1,92 +1,91 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="utf-8">
+
 <title>FaceMesh Dual View</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.10.0/p5.js"></script>
-
 <script src="https://unpkg.com/ml5@1/dist/ml5.min.js"></script>
 
 <style>
+
 body{
 margin:0;
 background:black;
-font-family:sans-serif;
-text-align:center;
 color:white;
+font-family:Arial;
+text-align:center;
 }
 
-#container{
+.container{
 display:flex;
 justify-content:center;
-gap:20px;
+gap:10px;
 margin-top:10px;
 }
 
 canvas{
-border:2px solid white;
+border:1px solid #333;
 }
 
 button{
-margin:10px;
-padding:10px 20px;
-font-size:16px;
-cursor:pointer;
+margin-top:5px;
+padding:6px 12px;
+font-size:14px;
 }
-</style>
 
+</style>
 </head>
 
 <body>
 
-<h2>Face Mesh Dual Display</h2>
+<h3>FaceMesh Dual View</h3>
+
+<div class="container">
 
 <div>
-<button onclick="saveLeft()">Save Tattoo</button>
-<button onclick="saveRight()">Save Mesh</button>
+<div id="canvasTexture"></div>
+<button onclick="saveTexture()">Save Texture View</button>
 </div>
 
-<div id="container"></div>
+<div>
+<div id="canvasMesh"></div>
+<button onclick="saveMesh()">Save Mesh View</button>
+</div>
+
+</div>
 
 <script>
 
 let video;
 let faceMesh;
-
 let faces=[];
+
 let triangles;
 let uvCoords;
-
 let img;
 
-let canvasLeft;
-let canvasRight;
+let textureCanvas;
+let meshCanvas;
 
 function preload(){
 
-faceMesh = ml5.faceMesh({
-maxFaces:1,
-flipped:true
-});
+faceMesh = ml5.faceMesh({maxFaces:1, flipped:true});
 
 img = loadImage("TATOO22.png");
 
 }
 
 function gotFaces(results){
-faces=results;
+
+faces = results;
+
 }
 
 function setup(){
 
-let container=document.getElementById("container");
-
-canvasLeft=createCanvas(640,480,WEBGL);
-canvasLeft.parent(container);
-
-canvasRight=createGraphics(640,480);
+pixelDensity(1);
 
 video=createCapture(VIDEO,{flipped:true});
 video.size(640,480);
@@ -94,38 +93,55 @@ video.hide();
 
 faceMesh.detectStart(video,gotFaces);
 
-triangles=faceMesh.getTriangles();
-uvCoords=faceMesh.getUVCoords();
+triangles = faceMesh.getTriangles();
+uvCoords = faceMesh.getUVCoords();
+
+textureCanvas=createGraphics(640,480,WEBGL);
+meshCanvas=createGraphics(640,480);
+
+let c1=createCanvas(640,480);
+c1.parent("canvasTexture");
+
+let c2=createGraphics(640,480);
+
+let meshView=createCanvas(640,480);
+meshView.parent("canvasMesh");
 
 }
 
 function draw(){
 
-// LEFT WINDOW (TATTOO)
+drawTextureView();
+drawMeshView();
 
-push();
+}
 
-translate(-width/2,-height/2);
+function drawTextureView(){
 
-background(0);
+textureCanvas.push();
 
-image(video,0,0);
+textureCanvas.translate(-textureCanvas.width/2,-textureCanvas.height/2);
+
+textureCanvas.background(0);
+
+textureCanvas.image(video,0,0);
 
 if(faces.length>0){
 
 let face=faces[0];
 
-tint(5,255,255,122);
-texture(img);
-textureMode(NORMAL);
-noStroke();
+textureCanvas.tint(5,255,255,122);
+textureCanvas.texture(img);
 
-beginShape(TRIANGLES);
+textureCanvas.textureMode(NORMAL);
+
+textureCanvas.noStroke();
+
+textureCanvas.beginShape(TRIANGLES);
 
 for(let i=0;i<triangles.length;i++){
 
-let tri=triangles[i];
-let [a,b,c]=tri;
+let [a,b,c]=triangles[i];
 
 let pointA=face.keypoints[a];
 let pointB=face.keypoints[b];
@@ -135,39 +151,43 @@ let uvA=uvCoords[a];
 let uvB=uvCoords[b];
 let uvC=uvCoords[c];
 
-vertex(pointA.x,pointA.y,uvA[0],uvA[1]);
-vertex(pointB.x,pointB.y,uvB[0],uvB[1]);
-vertex(pointC.x,pointC.y,uvC[0],uvC[1]);
+textureCanvas.vertex(pointA.x,pointA.y,uvA[0],uvA[1]);
+textureCanvas.vertex(pointB.x,pointB.y,uvB[0],uvB[1]);
+textureCanvas.vertex(pointC.x,pointC.y,uvC[0],uvC[1]);
 
 }
 
-endShape();
+textureCanvas.endShape();
 
 }
 
-pop();
+textureCanvas.pop();
 
+image(textureCanvas,0,0);
 
-// RIGHT WINDOW (MESH)
+}
 
-canvasRight.background(0);
+function drawMeshView(){
 
-canvasRight.image(video,0,0);
+let g=meshCanvas;
+
+g.background(0);
+
+g.image(video,0,0);
+
+video.loadPixels();
 
 if(faces.length>0){
 
 let face=faces[0];
 
-video.loadPixels();
+randomSeed(5);
 
-canvasRight.randomSeed(5);
-
-canvasRight.beginShape(TRIANGLES);
+g.beginShape(TRIANGLES);
 
 for(let i=0;i<triangles.length;i++){
 
-let tri=triangles[i];
-let [a,b,c]=tri;
+let [a,b,c]=triangles[i];
 
 let pointA=face.keypoints[a];
 let pointB=face.keypoints[b];
@@ -182,34 +202,32 @@ let rr=video.pixels[index];
 let gg=video.pixels[index+1];
 let bb=video.pixels[index+2];
 
-canvasRight.stroke(rr,gg,bb);
-canvasRight.fill(random(255),gg,bb);
+g.stroke(rr,gg,bb);
+g.fill(random(255),gg,bb);
 
-canvasRight.vertex(pointA.x,pointA.y);
-canvasRight.vertex(pointB.x,pointB.y);
-canvasRight.vertex(pointC.x,pointC.y);
-
-}
-
-canvasRight.endShape();
+g.vertex(pointA.x,pointA.y);
+g.vertex(pointB.x,pointB.y);
+g.vertex(pointC.x,pointC.y);
 
 }
 
-image(canvasRight,width,0);
+g.endShape();
 
 }
 
-// SAVE BUTTONS
-
-function saveLeft(){
-
-saveCanvas(canvasLeft,'tattoo_face','png');
+image(g,0,0);
 
 }
 
-function saveRight(){
+function saveTexture(){
 
-save(canvasRight,'mesh_face.png');
+save(textureCanvas,"face_texture.png");
+
+}
+
+function saveMesh(){
+
+save(meshCanvas,"face_mesh.png");
 
 }
 
