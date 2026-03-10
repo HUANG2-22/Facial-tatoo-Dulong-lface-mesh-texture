@@ -2,235 +2,149 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-
-<title>FaceMesh Dual View</title>
-
+<title>FaceMesh Dual View - GitHub Pages</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.10.0/p5.js"></script>
 <script src="https://unpkg.com/ml5@1/dist/ml5.min.js"></script>
-
 <style>
-
-body{
-margin:0;
-background:black;
-color:white;
-font-family:Arial;
-text-align:center;
+body {
+  margin: 0;
+  background: black;
+  color: white;
+  font-family: Arial;
+  text-align: center;
 }
-
-.container{
-display:flex;
-justify-content:center;
-gap:10px;
-margin-top:10px;
+.container {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
 }
-
-canvas{
-border:1px solid #333;
+canvas {
+  border: 1px solid #333;
 }
-
-button{
-margin-top:5px;
-padding:6px 12px;
-font-size:14px;
+button {
+  margin-top: 5px;
+  padding: 6px 12px;
+  font-size: 14px;
 }
-
 </style>
 </head>
-
 <body>
-
 <h3>FaceMesh Dual View</h3>
-
 <div class="container">
-
-<div>
-<div id="canvasTexture"></div>
-<button onclick="saveTexture()">Save Texture View</button>
-</div>
-
-<div>
-<div id="canvasMesh"></div>
-<button onclick="saveMesh()">Save Mesh View</button>
-</div>
-
+  <div>
+    <div id="canvasTexture"></div>
+    <button onclick="saveTexture()">Save Texture View</button>
+  </div>
+  <div>
+    <div id="canvasMesh"></div>
+    <button onclick="saveMesh()">Save Mesh View</button>
+  </div>
 </div>
 
 <script>
-
 let video;
 let faceMesh;
-let faces=[];
-
-let triangles;
-let uvCoords;
+let faces = [];
+let triangles, uvCoords;
 let img;
 
-let textureCanvas;
-let meshCanvas;
+// 两个 p5 实例的画布
+let textureP5;
+let meshP5;
 
 function preload(){
-
-faceMesh = ml5.faceMesh({maxFaces:1, flipped:true});
-
-img = loadImage("TATOO22.png");
-
-}
-
-function gotFaces(results){
-
-faces = results;
-
+  faceMesh = ml5.faceMesh({ maxFaces: 1, flipped: true });
+  img = loadImage("TATOO22.png");
 }
 
 function setup(){
+  // 创建隐藏的摄像头
+  video = createCapture(VIDEO, { video: { width: 640, height: 480 }, audio: false });
+  video.size(640,480);
+  video.hide();
 
-pixelDensity(1);
+  faceMesh.detectStart(video, (results) => faces = results);
 
-video=createCapture(VIDEO,{flipped:true});
-video.size(640,480);
-video.hide();
+  // 获取三角形索引和UV
+  triangles = faceMesh.getTriangles();
+  uvCoords = faceMesh.getUVCoords();
 
-faceMesh.detectStart(video,gotFaces);
+  // 创建纹身贴图窗口
+  textureP5 = new p5((p)=>{
+    p.setup = function(){
+      let c = p.createCanvas(640,480,p.WEBGL);
+      c.parent("canvasTexture");
+    }
+    p.draw = function(){
+      p.background(0);
+      p.push();
+      p.translate(-p.width/2,-p.height/2);
+      p.image(video,0,0);
+      if(faces.length>0){
+        let face = faces[0];
+        p.tint(5,255,255,122);
+        p.texture(img);
+        p.textureMode(p.NORMAL);
+        p.noStroke();
+        p.beginShape(p.TRIANGLES);
+        for(let i=0;i<triangles.length;i++){
+          let [a,b,c] = triangles[i];
+          let pointA = face.keypoints[a];
+          let pointB = face.keypoints[b];
+          let pointC = face.keypoints[c];
+          let uvA = uvCoords[a];
+          let uvB = uvCoords[b];
+          let uvC = uvCoords[c];
+          p.vertex(pointA.x,pointA.y,uvA[0],uvA[1]);
+          p.vertex(pointB.x,pointB.y,uvB[0],uvB[1]);
+          p.vertex(pointC.x,pointC.y,uvC[0],uvC[1]);
+        }
+        p.endShape();
+      }
+      p.pop();
+    }
+  });
 
-triangles = faceMesh.getTriangles();
-uvCoords = faceMesh.getUVCoords();
-
-textureCanvas=createGraphics(640,480,WEBGL);
-meshCanvas=createGraphics(640,480);
-
-let c1=createCanvas(640,480);
-c1.parent("canvasTexture");
-
-let c2=createGraphics(640,480);
-
-let meshView=createCanvas(640,480);
-meshView.parent("canvasMesh");
-
+  // 创建三角网格窗口
+  meshP5 = new p5((p)=>{
+    p.setup = function(){
+      let c = p.createCanvas(640,480);
+      c.parent("canvasMesh");
+    }
+    p.draw = function(){
+      p.background(0);
+      p.image(video,0,0);
+      video.loadPixels();
+      if(faces.length>0){
+        let face = faces[0];
+        p.randomSeed(5);
+        p.beginShape(p.TRIANGLES);
+        for(let i=0;i<triangles.length;i++){
+          let [a,b,c] = triangles[i];
+          let pointA = face.keypoints[a];
+          let pointB = face.keypoints[b];
+          let pointC = face.keypoints[c];
+          let cx = (pointA.x+pointB.x+pointC.x)/3;
+          let cy = (pointA.y+pointB.y+pointC.y)/3;
+          let index = (Math.floor(cx) + Math.floor(cy)*video.width)*4;
+          let rr = video.pixels[index];
+          let gg = video.pixels[index+1];
+          let bb = video.pixels[index+2];
+          p.stroke(rr,gg,bb);
+          p.fill(p.random(255),gg,bb);
+          p.vertex(pointA.x,pointA.y);
+          p.vertex(pointB.x,pointB.y);
+          p.vertex(pointC.x,pointC.y);
+        }
+        p.endShape();
+      }
+    }
+  });
 }
 
-function draw(){
-
-drawTextureView();
-drawMeshView();
-
-}
-
-function drawTextureView(){
-
-textureCanvas.push();
-
-textureCanvas.translate(-textureCanvas.width/2,-textureCanvas.height/2);
-
-textureCanvas.background(0);
-
-textureCanvas.image(video,0,0);
-
-if(faces.length>0){
-
-let face=faces[0];
-
-textureCanvas.tint(5,255,255,122);
-textureCanvas.texture(img);
-
-textureCanvas.textureMode(NORMAL);
-
-textureCanvas.noStroke();
-
-textureCanvas.beginShape(TRIANGLES);
-
-for(let i=0;i<triangles.length;i++){
-
-let [a,b,c]=triangles[i];
-
-let pointA=face.keypoints[a];
-let pointB=face.keypoints[b];
-let pointC=face.keypoints[c];
-
-let uvA=uvCoords[a];
-let uvB=uvCoords[b];
-let uvC=uvCoords[c];
-
-textureCanvas.vertex(pointA.x,pointA.y,uvA[0],uvA[1]);
-textureCanvas.vertex(pointB.x,pointB.y,uvB[0],uvB[1]);
-textureCanvas.vertex(pointC.x,pointC.y,uvC[0],uvC[1]);
-
-}
-
-textureCanvas.endShape();
-
-}
-
-textureCanvas.pop();
-
-image(textureCanvas,0,0);
-
-}
-
-function drawMeshView(){
-
-let g=meshCanvas;
-
-g.background(0);
-
-g.image(video,0,0);
-
-video.loadPixels();
-
-if(faces.length>0){
-
-let face=faces[0];
-
-randomSeed(5);
-
-g.beginShape(TRIANGLES);
-
-for(let i=0;i<triangles.length;i++){
-
-let [a,b,c]=triangles[i];
-
-let pointA=face.keypoints[a];
-let pointB=face.keypoints[b];
-let pointC=face.keypoints[c];
-
-let cx=(pointA.x+pointB.x+pointC.x)/3;
-let cy=(pointA.y+pointB.y+pointC.y)/3;
-
-let index=(floor(cx)+floor(cy)*video.width)*4;
-
-let rr=video.pixels[index];
-let gg=video.pixels[index+1];
-let bb=video.pixels[index+2];
-
-g.stroke(rr,gg,bb);
-g.fill(random(255),gg,bb);
-
-g.vertex(pointA.x,pointA.y);
-g.vertex(pointB.x,pointB.y);
-g.vertex(pointC.x,pointC.y);
-
-}
-
-g.endShape();
-
-}
-
-image(g,0,0);
-
-}
-
-function saveTexture(){
-
-save(textureCanvas,"face_texture.png");
-
-}
-
-function saveMesh(){
-
-save(meshCanvas,"face_mesh.png");
-
-}
-
+function saveTexture(){ textureP5.save("face_texture.png"); }
+function saveMesh(){ meshP5.save("face_mesh.png"); }
 </script>
 
 </body>
