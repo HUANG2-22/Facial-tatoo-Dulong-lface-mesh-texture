@@ -1,20 +1,21 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="utf-8">
-
-<title>Face Mesh Texture Mapping</title>
+<title>FaceMesh Gesture Toggle</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.10.0/p5.js"></script>
+
 <script src="https://unpkg.com/ml5@1/dist/ml5.min.js"></script>
 
 <style>
-html, body {
-  margin: 0;
-  padding: 0;
+html,body{
+margin:0;
+padding:0;
 }
-canvas {
-  display: block;
+canvas{
+display:block;
 }
 </style>
 
@@ -24,114 +25,190 @@ canvas {
 
 <script>
 
-// Face Mesh Texture Mapping
-// https://thecodingtrain.com/tracks/ml5js-beginners-guide/ml5/facemesh
-
 let video;
+
+// Face
 let faceMesh;
 let faces = [];
 let triangles;
 let uvCoords;
+
+// Hand
+let handPose;
+let hands = [];
+
+// texture
 let img;
 
-function preload() {
+// mode
+// 0 = tattoo
+// 1 = triangle mesh
+let mode = 0;
 
-  // Initialize FaceMesh model
-  faceMesh = ml5.faceMesh({ maxFaces: 1 });
+// wave detection
+let lastWristX = 0;
+let lastWaveTime = 0;
 
-  // Load texture image
-  img = loadImage("Tatoo1.png");
+function preload(){
 
-}
+faceMesh = ml5.faceMesh({
+maxFaces:1,
+flipped:true
+});
 
-function mousePressed() {
+handPose = ml5.handPose({
+flipped:true
+});
 
-  console.log(faces);
-
-  saveCanvas('face_texture_map', 'png');
-  console.log("画布已保存为 face_texture_map.png");
-
-}
-
-function gotFaces(results) {
-
-  faces = results;
-
-}
-
-function setup() {
-
-  createCanvas(640, 480, WEBGL);
-
-  video = createCapture(VIDEO);
-  video.size(640,480);
-  video.hide();
-
-  // Start face detection
-  faceMesh.detectStart(video, gotFaces);
-
-  // Get mesh data
-  triangles = faceMesh.getTriangles();
-  uvCoords = faceMesh.getUVCoords();
+img = loadImage("TATOO22.png");
 
 }
 
-function keyPressed() {
+function gotFaces(results){
+faces = results;
+}
 
-  if (key === 's' || key === 'S') {
+function gotHands(results){
+hands = results;
+}
 
-    saveCanvas('face_texture_map', 'png');
-    console.log("画布已保存为 face_texture_map.png");
+function setup(){
 
-  }
+createCanvas(640,480,WEBGL);
+
+video = createCapture(VIDEO,{flipped:true});
+video.size(640,480);
+video.hide();
+
+// start detection
+faceMesh.detectStart(video,gotFaces);
+handPose.detectStart(video,gotHands);
+
+// mesh data
+triangles = faceMesh.getTriangles();
+uvCoords = faceMesh.getUVCoords();
 
 }
 
-function draw() {
+function detectWave(){
 
-  translate(-width / 2, -height / 2);
+if(hands.length>0){
 
-  background(0);
+let wrist = hands[0].keypoints[0];
 
-  // show webcam
-  image(video, 0, 0);
+let dx = abs(wrist.x - lastWristX);
 
-  if (faces.length > 0) {
+// wave threshold
+if(dx > 80 && millis() - lastWaveTime > 800){
 
-    let face = faces[0];
+mode = 1 - mode;
 
-    tint(5, 255, 255, 122);
-    texture(img);
+lastWaveTime = millis();
 
-    textureMode(NORMAL);
+console.log("mode switched:",mode);
 
-    noStroke();
+}
 
-    beginShape(TRIANGLES);
+lastWristX = wrist.x;
 
-    for (let i = 0; i < triangles.length; i++) {
+}
 
-      let tri = triangles[i];
+}
 
-      let [a, b, c] = tri;
+function draw(){
 
-      let pointA = face.keypoints[a];
-      let pointB = face.keypoints[b];
-      let pointC = face.keypoints[c];
+detectWave();
 
-      let uvA = uvCoords[a];
-      let uvB = uvCoords[b];
-      let uvC = uvCoords[c];
+translate(-width/2,-height/2);
 
-      vertex(pointA.x, pointA.y, uvA[0], uvA[1]);
-      vertex(pointB.x, pointB.y, uvB[0], uvB[1]);
-      vertex(pointC.x, pointC.y, uvC[0], uvC[1]);
+background(0);
 
-    }
+image(video,0,0);
 
-    endShape();
+if(faces.length>0){
 
-  }
+let face = faces[0];
+
+if(mode==0){
+
+// texture mode
+
+tint(5,255,255,122);
+
+texture(img);
+
+textureMode(NORMAL);
+
+noStroke();
+
+beginShape(TRIANGLES);
+
+for(let i=0;i<triangles.length;i++){
+
+let tri = triangles[i];
+
+let [a,b,c] = tri;
+
+let pointA = face.keypoints[a];
+let pointB = face.keypoints[b];
+let pointC = face.keypoints[c];
+
+let uvA = uvCoords[a];
+let uvB = uvCoords[b];
+let uvC = uvCoords[c];
+
+vertex(pointA.x,pointA.y,uvA[0],uvA[1]);
+vertex(pointB.x,pointB.y,uvB[0],uvB[1]);
+vertex(pointC.x,pointC.y,uvC[0],uvC[1]);
+
+}
+
+endShape();
+
+}else{
+
+// triangle mesh mode
+
+video.loadPixels();
+
+randomSeed(5);
+
+beginShape(TRIANGLES);
+
+for(let i=0;i<triangles.length;i++){
+
+let tri = triangles[i];
+
+let [a,b,c] = tri;
+
+let pointA = face.keypoints[a];
+let pointB = face.keypoints[b];
+let pointC = face.keypoints[c];
+
+// centroid
+let cx = (pointA.x + pointB.x + pointC.x)/3;
+let cy = (pointA.y + pointB.y + pointC.y)/3;
+
+let index = (floor(cx) + floor(cy)*video.width)*4;
+
+let rr = video.pixels[index];
+let gg = video.pixels[index+1];
+let bb = video.pixels[index+2];
+
+stroke(rr,gg,bb);
+fill(random(255),gg,bb);
+
+vertex(pointA.x,pointA.y);
+vertex(pointB.x,pointB.y);
+vertex(pointC.x,pointC.y);
+
+}
+
+endShape();
+
+}
+
+}
 
 }
 
